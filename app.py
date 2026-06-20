@@ -1299,14 +1299,18 @@ def main():
     # Surface plan/API errors prominently
     if api_error:
         is_plan_error = "plan" in api_error.lower() or "free" in api_error.lower()
+        
+        # Mover HTML complexo para fora da f-string
+        plan_restriction_html = '<div style="margin-top:10px;font-size:.82rem;color:#8a7a7a">O plano gratuito da API-Football permite acesso às temporadas <strong style="color:#FFD700">2022-2024</strong> apenas.<br>Para acessar a Copa 2026, você precisa de um plano pago em <a href="https://dashboard.api-football.com" target="_blank" style="color:#FFD700">dashboard.api-football.com</a>.<br><br>Para demonstrar o app funcionando, altere <code style="background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px">SEASON=2022</code> no arquivo <code style="background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px">.env</code> para usar os dados da Copa do Qatar.</div>'
+        
         st.markdown(f"""
         <div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);
             border-radius:12px;padding:18px 20px;margin:0 0 20px">
-          <div style="font-weight:700;color:#ff8080;margin-bottom:6px">
+        <div style="font-weight:700;color:#ff8080;margin-bottom:6px">
             {'⚠️ Restrição de Plano' if is_plan_error else '❌ Erro na API'}
-          </div>
-          <div style="color:#cc6666;font-size:.88rem;line-height:1.6">{api_error}</div>
-          {'<div style="margin-top:10px;font-size:.82rem;color:#8a7a7a">O plano gratuito da API-Football permite acesso às temporadas <strong style=\\"color:#FFD700\\">2022-2024</strong> apenas.<br>Para acessar a Copa 2026, você precisa de um plano pago em <a href=\\"https://dashboard.api-football.com\\" target=\\"_blank\\" style=\\"color:#FFD700\\">dashboard.api-football.com</a>.<br><br>Para demonstrar o app funcionando, altere <code style=\\"background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px\\">SEASON=2022</code> no arquivo <code style=\\"background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px\\">.env</code> para usar os dados da Copa do Qatar.</div>' if is_plan_error else ''}
+        </div>
+        <div style="color:#cc6666;font-size:.88rem;line-height:1.6">{api_error}</div>
+        {plan_restriction_html if is_plan_error else ''}
         </div>
         """, unsafe_allow_html=True)
         if not raw_fixtures:
