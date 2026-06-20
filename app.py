@@ -302,15 +302,23 @@ from src.data_processor import (
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def flag_img(country: str, size: str = "sm") -> str:
+    emoji = flag_emoji(country)
     url = flag_url(country, width=40 if size == "sm" else 80)
     if url:
-        return f'<img src="{url}" class="flag-{size}" alt="{country}" />'
-    return f'<span style="font-size:1.2rem">{flag_emoji(country)}</span>'
+        return (
+            f'<img src="{url}" class="flag-{size}" alt="{country}" '
+            f'onerror="this.outerHTML=\'<span style=&quot;font-size:1.2rem&quot;>{emoji}</span>\'" />'
+        )
+    return f'<span style="font-size:1.2rem">{emoji}</span>'
 
 
 def team_logo_img(logo_url: str, size: int = 28) -> str:
     if logo_url:
-        return f'<img src="{logo_url}" width="{size}" height="{size}" style="object-fit:contain;border-radius:4px" />'
+        return (
+            f'<img src="{logo_url}" width="{size}" height="{size}" '
+            f'style="object-fit:contain;border-radius:4px;vertical-align:middle" '
+            f'onerror="this.style.opacity=\'0\'" />'
+        )
     return ""
 
 
@@ -381,17 +389,26 @@ def get_api(key: str) -> FootballAPI:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_fixtures(api_key: str) -> list:
+def load_fixtures(api_key: str) -> tuple[list, str | None]:
+    """Returns (fixtures_list, error_message_or_None)."""
     api = get_api(api_key)
     data = api.get_fixtures()
-    return data.get("response", []) if data else []
+    if not data:
+        return [], "Sem resposta da API. Verifique sua conexão."
+    errors = data.get("errors", {})
+    if errors:
+        msg = list(errors.values())[0] if isinstance(errors, dict) else str(errors)
+        return [], msg
+    return data.get("response", []), None
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_standings(api_key: str) -> list:
     api = get_api(api_key)
     data = api.get_standings()
-    return data.get("response", []) if data else []
+    if not data or data.get("errors"):
+        return []
+    return data.get("response", [])
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -417,11 +434,21 @@ def load_h2h(api_key: str, t1: int, t2: int) -> list:
 # ─── UI Components ────────────────────────────────────────────────────────────
 
 def render_hero():
-    st.markdown("""
+    season = os.getenv("SEASON", "2026")
+    if season == "2026":
+        title = "⚽ Copa do Mundo 2026"
+        hosts = "🇺🇸 Estados Unidos &nbsp;•&nbsp; 🇨🇦 Canadá &nbsp;•&nbsp; 🇲🇽 México"
+    elif season == "2022":
+        title = "⚽ Copa do Mundo 2022"
+        hosts = "🇶🇦 Qatar"
+    else:
+        title = f"⚽ Copa do Mundo {season}"
+        hosts = ""
+    st.markdown(f"""
     <div class="hero">
       <div class="hero-sub">FIFA</div>
-      <h1 class="hero-title">⚽ Copa do Mundo 2026</h1>
-      <div class="hero-hosts">🇺🇸 Estados Unidos &nbsp;•&nbsp; 🇨🇦 Canadá &nbsp;•&nbsp; 🇲🇽 México</div>
+      <h1 class="hero-title">{title}</h1>
+      <div class="hero-hosts">{hosts}</div>
       <div class="hero-divider"></div>
     </div>
     """, unsafe_allow_html=True)
@@ -922,7 +949,11 @@ def render_standings_table(group_name: str, teams: list):
         else:
             tr_cls = "out"
 
-        logo_html = f'<img src="{t_logo}" width="18" height="18" style="object-fit:contain;border-radius:2px;margin-right:6px;vertical-align:middle" />' if t_logo else ""
+        logo_html = (
+            f'<img src="{t_logo}" width="18" height="18" '
+            f'style="object-fit:contain;border-radius:2px;margin-right:6px;vertical-align:middle" '
+            f'onerror="this.style.opacity=\'0\'" />'
+        ) if t_logo else ""
 
         rows_html += f"""
         <tr class="{tr_cls}">
@@ -1197,10 +1228,28 @@ def main():
           Temporada: <code style="color:#FFD700">{season}</code>
         </div>""", unsafe_allow_html=True)
 
+    season = os.getenv("SEASON", "2026")
+
     # Load data
-    with st.spinner("Carregando dados da Copa 2026..."):
-        raw_fixtures = load_fixtures(api_key)
+    with st.spinner(f"Carregando dados da Copa {season}..."):
+        raw_fixtures, api_error = load_fixtures(api_key)
         raw_standings = load_standings(api_key)
+
+    # Surface plan/API errors prominently
+    if api_error:
+        is_plan_error = "plan" in api_error.lower() or "free" in api_error.lower()
+        st.markdown(f"""
+        <div style="background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.25);
+            border-radius:12px;padding:18px 20px;margin:0 0 20px">
+          <div style="font-weight:700;color:#ff8080;margin-bottom:6px">
+            {'⚠️ Restrição de Plano' if is_plan_error else '❌ Erro na API'}
+          </div>
+          <div style="color:#cc6666;font-size:.88rem;line-height:1.6">{api_error}</div>
+          {'<div style="margin-top:10px;font-size:.82rem;color:#8a7a7a">O plano gratuito da API-Football permite acesso às temporadas <strong style=\\"color:#FFD700\\">2022-2024</strong> apenas.<br>Para acessar a Copa 2026, você precisa de um plano pago em <a href=\\"https://dashboard.api-football.com\\" target=\\"_blank\\" style=\\"color:#FFD700\\">dashboard.api-football.com</a>.<br><br>Para demonstrar o app funcionando, altere <code style=\\"background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px\\">SEASON=2022</code> no arquivo <code style=\\"background:rgba(255,215,0,.15);color:#FFD700;padding:1px 6px;border-radius:3px\\">.env</code> para usar os dados da Copa do Qatar.</div>' if is_plan_error else ''}
+        </div>
+        """, unsafe_allow_html=True)
+        if not raw_fixtures:
+            return
 
     parsed = parse_fixtures(raw_fixtures)
     standings_by_group = parse_standings(raw_standings)
@@ -1208,6 +1257,7 @@ def main():
     summary = tournament_summary(raw_fixtures)
 
     # Main tabs
+    season_label = f"Copa {season}"
     tab1, tab2, tab3, tab4 = st.tabs([
         "🏠 Início",
         "⚽ Grupos",
