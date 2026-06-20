@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone, timedelta
 
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -288,6 +289,8 @@ if "selected_match" not in st.session_state:
     st.session_state.selected_match = None
 if "detail_tab" not in st.session_state:
     st.session_state.detail_tab = "stats"
+if "season" not in st.session_state:
+    st.session_state.season = os.getenv("SEASON", "2022")
 
 # ─── Imports (after CSS to avoid white flash) ─────────────────────────────────
 from src.api_client import FootballAPI
@@ -301,22 +304,31 @@ from src.data_processor import (
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def flag_img(country: str, size: str = "sm") -> str:
-    emoji = flag_emoji(country)
-    url = flag_url(country, width=40 if size == "sm" else 80)
+def team_flag(team: dict, w: int = 32, h: int = 22) -> str:
+    """Country flag via flagcdn.com — emoji visible behind as permanent fallback."""
+    name = team.get("name", "") if isinstance(team, dict) else str(team)
+    emoji = flag_emoji(name)
+    url = flag_url(name, width=40)
     if url:
         return (
-            f'<img src="{url}" class="flag-{size}" alt="{country}" '
-            f'onerror="this.outerHTML=\'<span style=&quot;font-size:1.2rem&quot;>{emoji}</span>\'" />'
+            f'<span style="display:inline-block;position:relative;'
+            f'width:{w}px;height:{h}px;vertical-align:middle;'
+            f'overflow:hidden;border-radius:3px;flex-shrink:0">'
+            f'<span style="position:absolute;inset:0;display:flex;align-items:center;'
+            f'justify-content:center;font-size:{h}px;line-height:1">{emoji}</span>'
+            f'<img src="{url}" '
+            f'style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" '
+            f'onerror="this.remove()" loading="lazy" />'
+            f'</span>'
         )
-    return f'<span style="font-size:1.2rem">{emoji}</span>'
+    return f'<span style="font-size:{h}px;vertical-align:middle;line-height:1;flex-shrink:0">{emoji}</span>'
 
 
 def team_logo_img(logo_url: str, size: int = 28) -> str:
     if logo_url:
         return (
             f'<img src="{logo_url}" width="{size}" height="{size}" '
-            f'style="object-fit:contain;border-radius:4px;vertical-align:middle" '
+            f'style="object-fit:contain;border-radius:4px;vertical-align:middle;flex-shrink:0" '
             f'onerror="this.style.opacity=\'0\'" />'
         )
     return ""
@@ -384,14 +396,16 @@ def event_icon(ev: dict) -> str:
 # ─── API ──────────────────────────────────────────────────────────────────────
 
 @st.cache_resource
-def get_api(key: str) -> FootballAPI:
-    return FootballAPI(key)
+def get_api(key: str, season: str = "2022") -> FootballAPI:
+    api = FootballAPI(key)
+    api.season = int(season)
+    return api
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_fixtures(api_key: str) -> tuple[list, str | None]:
+def load_fixtures(api_key: str, season: str) -> tuple[list, str | None]:
     """Returns (fixtures_list, error_message_or_None)."""
-    api = get_api(api_key)
+    api = get_api(api_key, season)
     data = api.get_fixtures()
     if not data:
         return [], "Sem resposta da API. Verifique sua conexão."
@@ -403,8 +417,8 @@ def load_fixtures(api_key: str) -> tuple[list, str | None]:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def load_standings(api_key: str) -> list:
-    api = get_api(api_key)
+def load_standings(api_key: str, season: str) -> list:
+    api = get_api(api_key, season)
     data = api.get_standings()
     if not data or data.get("errors"):
         return []
@@ -520,8 +534,6 @@ def render_match_row(fix: dict, key_prefix: str = "m") -> bool:
 
     home_name = home.get("name", "—")
     away_name = away.get("name", "—")
-    home_logo = home.get("logo", "")
-    away_logo = away.get("logo", "")
 
     status_badge = {
         "live": f'<span class="badge b-live">● AO VIVO {elapsed_label(fix)}</span>',
@@ -538,6 +550,8 @@ def render_match_row(fix: dict, key_prefix: str = "m") -> bool:
     away_style = "font-weight:700;color:#FFD700" if away_w else ""
 
     date_str = format_dt(dt)
+    home_flag = team_flag(home, w=38, h=26)
+    away_flag = team_flag(away, w=38, h=26)
 
     col_main, col_btn = st.columns([11, 1])
     with col_main:
@@ -550,11 +564,11 @@ def render_match_row(fix: dict, key_prefix: str = "m") -> bool:
           <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px">
             <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end">
               <div class="team-name" style="text-align:right;{home_style}">{home_name}</div>
-              {team_logo_img(home_logo, 32)}
+              {home_flag}
             </div>
             <div class="match-score">{score}</div>
             <div style="display:flex;align-items:center;gap:10px">
-              {team_logo_img(away_logo, 32)}
+              {away_flag}
               <div class="team-name" style="{away_style}">{away_name}</div>
             </div>
           </div>
@@ -583,10 +597,10 @@ def render_statistics_panel(fix: dict, detail: dict):
     st.markdown("---")
     st.markdown(f"""
     <div class="sec-hdr">
-      {team_logo_img(home.get('logo',''), 24)}
+      {team_flag(home, w=36, h=24)}
       {home.get('name','—')}
       <span style="color:#3a4a68;margin:0 8px">vs</span>
-      {team_logo_img(away.get('logo',''), 24)}
+      {team_flag(away, w=36, h=24)}
       {away.get('name','—')}
       &nbsp;<span style="font-size:.9rem;color:#6a7a9a">• Detalhes</span>
     </div>
@@ -949,16 +963,12 @@ def render_standings_table(group_name: str, teams: list):
         else:
             tr_cls = "out"
 
-        logo_html = (
-            f'<img src="{t_logo}" width="18" height="18" '
-            f'style="object-fit:contain;border-radius:2px;margin-right:6px;vertical-align:middle" '
-            f'onerror="this.style.opacity=\'0\'" />'
-        ) if t_logo else ""
+        logo_html = team_flag(team_info, w=26, h=18)
 
         rows_html += f"""
         <tr class="{tr_cls}">
           <td style="color:#5a6a88;font-size:.75rem;padding-left:8px">{rank}</td>
-          <td>{logo_html}<span style="font-size:.82rem;color:#c8d4e8">{t_name}</span></td>
+          <td style="white-space:nowrap"><span style="margin-right:7px">{logo_html}</span><span style="font-size:.82rem;color:#c8d4e8">{t_name}</span></td>
           <td style="color:#7a8aaa">{played}</td>
           <td style="color:#7a8aaa">{w}</td>
           <td style="color:#7a8aaa">{d}</td>
@@ -1006,13 +1016,13 @@ def render_bracket_round(round_name: str, fixtures: list, key_prefix: str):
             cls += " winner"
 
         def team_row(team_info, goals, is_winner):
-            logo = team_logo_img(team_info.get("logo", ""), 20)
+            flag = team_flag(team_info, w=22, h=15) if team_info.get("name") else ""
             name = team_info.get("name", "A definir")
             name_cls = "bracket-team winner" if is_winner else "bracket-team"
             if not team_info.get("name"):
                 name_cls += " bracket-tbd"
             score = f'<span class="bracket-score">{goals if goals is not None else ""}</span>'
-            return f'<div class="{name_cls}">{logo} {name}{score}</div>'
+            return f'<div class="{name_cls}">{flag} {name}{score}</div>'
 
         st.markdown(f"""
         <div class="{cls}">
@@ -1183,10 +1193,55 @@ def main():
         render_setup_guide()
         return
 
-    # Sidebar: cache control + API info
+    season = st.session_state.season
+
+    # Sidebar: temporada + cache + API info
     with st.sidebar:
         st.markdown("## ⚙️ Configurações")
-        api = get_api(api_key)
+
+        # ── Season switcher ──────────────────────────────────────────────────
+        st.markdown(
+            '<div style="font-size:.8rem;color:#6a7a9a;margin-bottom:6px">'
+            '⚽ <strong style="color:#dde4f0">Temporada</strong></div>',
+            unsafe_allow_html=True,
+        )
+        col_22, col_26 = st.columns(2)
+        with col_22:
+            active_22 = season == "2022"
+            if st.button(
+                "2022 🇶🇦",
+                key="btn_season_2022",
+                type="primary" if active_22 else "secondary",
+                use_container_width=True,
+            ):
+                if not active_22:
+                    st.session_state.season = "2022"
+                    st.session_state.selected_match = None
+                    st.cache_data.clear()
+                    st.rerun()
+        with col_26:
+            active_26 = season == "2026"
+            if st.button(
+                "2026 🌎",
+                key="btn_season_2026",
+                type="primary" if active_26 else "secondary",
+                use_container_width=True,
+            ):
+                if not active_26:
+                    st.session_state.season = "2026"
+                    st.session_state.selected_match = None
+                    st.cache_data.clear()
+                    st.rerun()
+
+        if season == "2026":
+            st.markdown(
+                '<div style="font-size:.72rem;color:#cc6644;margin-top:4px">'
+                '⚠️ Requer plano pago na API-Football</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+        api = get_api(api_key, season)
         cache_info = api.cache.cache_info()
         st.markdown(f"""
         <div style="font-size:.8rem;color:#6a7a9a">
@@ -1205,7 +1260,6 @@ def main():
         if status_data and status_data.get("response"):
             acc = status_data["response"].get("account", {})
             req = status_data["response"].get("requests", {})
-            remaining = req.get("current", "?")
             limit_day = req.get("limit_day", 100)
             used = req.get("current", 0)
             st.markdown(f"""
@@ -1221,19 +1275,16 @@ def main():
 
         st.markdown("---")
         league_id = os.getenv("LEAGUE_ID", "1")
-        season = os.getenv("SEASON", "2026")
         st.markdown(f"""
         <div style="font-size:.75rem;color:#4a5a78">
           League ID: <code style="color:#FFD700">{league_id}</code><br>
           Temporada: <code style="color:#FFD700">{season}</code>
         </div>""", unsafe_allow_html=True)
 
-    season = os.getenv("SEASON", "2026")
-
     # Load data
     with st.spinner(f"Carregando dados da Copa {season}..."):
-        raw_fixtures, api_error = load_fixtures(api_key)
-        raw_standings = load_standings(api_key)
+        raw_fixtures, api_error = load_fixtures(api_key, season)
+        raw_standings = load_standings(api_key, season)
 
     # Surface plan/API errors prominently
     if api_error:
@@ -1291,14 +1342,26 @@ def main():
                 with st.spinner("Carregando estatísticas..."):
                     detail = load_match_detail(api_key, selected_id)
             else:
-                # upcoming: load H2H
                 h2h = []
                 if home_id and away_id:
                     with st.spinner("Carregando histórico..."):
                         h2h = load_h2h(api_key, home_id, away_id)
                 detail = {"stats": [], "events": [], "lineups": [], "h2h": h2h}
 
+            # Anchor para scroll automático
+            st.markdown('<div id="copa-stats-anchor"></div>', unsafe_allow_html=True)
             render_statistics_panel(selected_fix, detail)
+
+            # Scroll até as estatísticas
+            components.html(
+                """<script>
+                (function() {
+                  var el = window.parent.document.getElementById('copa-stats-anchor');
+                  if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+                })();
+                </script>""",
+                height=0,
+            )
 
 
 if __name__ == "__main__":
