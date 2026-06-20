@@ -677,16 +677,20 @@ def _render_stats_bars(stats: dict, fix: dict):
 
     # Header
     c1, c2, c3 = st.columns([3, 4, 3])
-    c1.markdown(f"""<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
-        {team_logo_img(home.get('logo',''), 24)}
-        <strong style="color:#FFD700;font-size:.85rem">{home.get('name','')}</strong>
-    </div>""", unsafe_allow_html=True)
+    c1.markdown(
+        f'<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">'
+        f'{team_flag(home, w=32, h=22)}'
+        f'<strong style="color:#FFD700;font-size:.85rem">{home.get("name","")}</strong>'
+        f'</div>',
+        unsafe_allow_html=True)
     c2.markdown('<div style="text-align:center;color:#4a5a78;font-size:.72rem">ESTATÍSTICA</div>',
                 unsafe_allow_html=True)
-    c3.markdown(f"""<div style="display:flex;align-items:center;gap:8px">
-        {team_logo_img(away.get('logo',''), 24)}
-        <strong style="color:#7099ff;font-size:.85rem">{away.get('name','')}</strong>
-    </div>""", unsafe_allow_html=True)
+    c3.markdown(
+        f'<div style="display:flex;align-items:center;gap:8px">'
+        f'{team_flag(away, w=32, h=22)}'
+        f'<strong style="color:#7099ff;font-size:.85rem">{away.get("name","")}</strong>'
+        f'</div>',
+        unsafe_allow_html=True)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -745,11 +749,15 @@ def _render_events_timeline(events: list, fix: dict):
 
     def render_side(col, team_events, team):
         with col:
-            st.markdown(f"""
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-              {team_logo_img(team.get('logo',''), 22)}
-              <strong style="font-size:.85rem;color:#c8d4e8">{team.get('name','')}</strong>
-            </div>""", unsafe_allow_html=True)
+            name = team.get("name", "")
+            flag = team_flag(team, w=24, h=17)
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+                f'{flag}'
+                f'<strong style="font-size:.85rem;color:#c8d4e8">{name}</strong>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
             if not team_events:
                 st.markdown('<div class="no-data" style="padding:16px 0">Sem eventos</div>',
                             unsafe_allow_html=True)
@@ -762,16 +770,18 @@ def _render_events_timeline(events: list, fix: dict):
                 player = ev.get("player", "")
                 assist = ev.get("assist", "")
                 sub_txt = f'<div class="ev-sub">↳ {assist}</div>' if assist else ""
-                rows += f"""
-                <div class="ev-row">
-                  <div class="ev-min">{mn}</div>
-                  <div class="ev-ico">{ico}</div>
-                  <div>
-                    <div class="ev-txt">{player}</div>
-                    {sub_txt}
-                    <div class="ev-sub">{detail}</div>
-                  </div>
-                </div>"""
+                # sem indentação: 4+ espaços viram code block no markdown do Streamlit
+                rows += (
+                    f'<div class="ev-row">'
+                    f'<div class="ev-min">{mn}</div>'
+                    f'<div class="ev-ico">{ico}</div>'
+                    f'<div>'
+                    f'<div class="ev-txt">{player}</div>'
+                    f'{sub_txt}'
+                    f'<div class="ev-sub">{detail}</div>'
+                    f'</div>'
+                    f'</div>'
+                )
             st.markdown(rows, unsafe_allow_html=True)
 
     render_side(col_h, home_events, home)
